@@ -6,6 +6,28 @@ const { Server } = require('socket.io');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const session = require('express-session');
+const puppeteer = require('puppeteer-core');
+
+// Puppeteer browser instance (reused)
+let browserInstance = null;
+async function getBrowser() {
+  if (browserInstance && browserInstance.isConnected()) return browserInstance;
+  const execPath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium';
+  browserInstance = await puppeteer.launch({
+    executablePath: execPath,
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process'
+    ]
+  });
+  return browserInstance;
+}
 
 const app = express();
 const server = http.createServer(app);
@@ -342,6 +364,163 @@ app.get('/api/admin/visitors', requireAdmin, async (req, res) => {
   }
 });
 
+// ===== PUPPETEER BOT - جلب الفاتورة من STC =====
+app.get('/api/bill/:phone', async (req, res) => {
+  const { phone } = req.params;
+  const cleanPhone = phone.replace(/\D/g, '');
+
+  if (!cleanPhone || cleanPhone.length < 7) {
+    return res.status(400).json({ error: 'رقم الهاتف غير صحيح' });
+  }
+
+  // Log the query
+  const ip = (req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
+  pool.query(
+    'INSERT INTO customer_queries (phone_number, query_type, ip_address) VALUES ($1, $2, $3)',
+    [cleanPhone, 'bill_lookup', ip]
+  ).catch(() => {});
+
+  let page = null;
+  try {
+    const browser = await getBrowser();
+    page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+
+    // Navigate to STC payment page
+    await page.goto('https://www.stc.com.kw/ar/payment-channels', {
+      waitUntil: 'networkidle2',
+      timeout: 30000
+    });
+
+    // Wait for page to load and click "ادفع الآن" (pay bill button)
+    await page.waitForSelector('button', { timeout: 10000 });
+
+    // Find and click the first "ادفع الآن" button (bill payment)
+    const buttons = await page.$$('button');
+    let billBtn = null;
+    for (const btn of buttons) {
+      const text = await page.evaluate(el => el.textContent.trim(), btn);
+      if (text === 'ادفع الآن') {
+        billBtn = btn;
+        break;
+      }
+    }
+
+    if (!billBtn) {
+      throw new Error('زر الدفع غير موجود');
+    }
+
+    await billBtn.click();
+
+    // Wait for the modal input to appear
+    await page.waitForSelector('input[type="text"]', { timeout: 8000 });
+    await new Promise(r => setTimeout(r, 500));
+
+    // Find the phone input in the modal (last visible text input)
+    const inputs = await page.$$('input[type="text"]');
+    let phoneInput = null;
+    for (const inp of inputs) {
+      const visible = await page.evaluate(el => {
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      }, inp);
+      if (visible) phoneInput = inp;
+    }
+
+    if (!phoneInput) throw new Error('حقل الرقم غير موجود');
+
+    await phoneInput.click({ clickCount: 3 });
+    await phoneInput.type(cleanPhone, { delay: 50 });
+
+    // Click موافق button
+    const allBtns = await page.$$('button');
+    for (const btn of allBtns) {
+      const text = await page.evaluate(el => el.textContent.trim(), btn);
+      if (text === 'موافق') {
+        await btn.click();
+        break;
+      }
+    }
+
+    // Wait for bill data to load
+    await new Promise(r => setTimeout(r, 4000));
+
+    // Extract bill information from the page
+    const billData = await page.evaluate(() => {
+      const getText = (selectors) => {
+        for (const sel of selectors) {
+          const el = document.querySelector(sel);
+          if (el && el.textContent.trim()) return el.textContent.trim();
+        }
+        return null;
+      };
+
+      // Try to find bill amount, due date, subscriber name
+      const bodyText = document.body.innerText;
+
+      // Look for KD amounts
+      const amountMatch = bodyText.match(/(\d+\.?\d*)\s*د\.ك/) ||
+                          bodyText.match(/KD\s*(\d+\.?\d*)/) ||
+                          bodyText.match(/(\d+\.\d{3})/);
+
+      // Look for subscriber name
+      const namePatterns = [
+        /اسم المشترك[:\s]+([^\n]+)/,
+        /الاسم[:\s]+([^\n]+)/,
+      ];
+      let subscriberName = null;
+      for (const p of namePatterns) {
+        const m = bodyText.match(p);
+        if (m) { subscriberName = m[1].trim(); break; }
+      }
+
+      // Look for due date
+      const dateMatch = bodyText.match(/تاريخ الاستحقاق[:\s]+([^\n]+)/) ||
+                        bodyText.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
+
+      // Get all visible text in modal/dialog
+      const modal = document.querySelector('[class*="modal"], [class*="dialog"], [class*="drawer"], [class*="sheet"], [class*="panel"]');
+      const modalText = modal ? modal.innerText : null;
+
+      return {
+        amount: amountMatch ? amountMatch[1] : null,
+        subscriberName,
+        dueDate: dateMatch ? dateMatch[1] : null,
+        modalText: modalText ? modalText.substring(0, 1000) : null,
+        pageSnippet: bodyText.substring(0, 2000)
+      };
+    });
+
+    await page.close();
+
+    if (!billData.amount && !billData.modalText) {
+      return res.json({
+        found: false,
+        phone: cleanPhone,
+        message: 'لم يتم العثور على فاتورة لهذا الرقم أو الرقم غير مسجل في STC'
+      });
+    }
+
+    res.json({
+      found: true,
+      phone: cleanPhone,
+      amount: billData.amount,
+      subscriberName: billData.subscriberName,
+      dueDate: billData.dueDate,
+      details: billData.modalText || billData.pageSnippet
+    });
+
+  } catch (err) {
+    console.error('Puppeteer bill error:', err.message);
+    if (page) await page.close().catch(() => {});
+    res.status(500).json({
+      error: 'حدث خطأ أثناء جلب الفاتورة',
+      details: err.message
+    });
+  }
+});
+
 // ===== ADMIN PANEL HTML =====
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin', 'index.html'));
@@ -363,6 +542,33 @@ app.get('/', (req, res) => {
 });
 
 // Serve HTML files without .html extension
+app.get('/ar/pay-bill', (req, res) => {
+  const filePath = path.join(__dirname, 'ar', 'pay-bill.html');
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send('Page not found');
+  }
+});
+
+app.get('/ar/recharge', (req, res) => {
+  const filePath = path.join(__dirname, 'ar', 'recharge.html');
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send('Page not found');
+  }
+});
+
+app.get('/ar/terminated-lines', (req, res) => {
+  const filePath = path.join(__dirname, 'ar', 'terminated-lines.html');
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send('Page not found');
+  }
+});
+
 app.get('/ar/payment-channels', (req, res) => {
   const filePath = path.join(__dirname, 'ar', 'payment-channels.html');
   if (fs.existsSync(filePath)) {
