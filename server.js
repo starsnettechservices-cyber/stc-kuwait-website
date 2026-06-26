@@ -521,6 +521,280 @@ app.get('/api/bill/:phone', async (req, res) => {
   }
 });
 
+// ===== PUPPETEER BOT - إتمام دفع الفاتورة والحصول على رابط Knet =====
+app.post('/api/pay-bill', async (req, res) => {
+  const { phone, paymentMethod } = req.body;
+  const cleanPhone = (phone || '').replace(/\D/g, '');
+  if (!cleanPhone || cleanPhone.length < 7) {
+    return res.status(400).json({ error: 'رقم الهاتف غير صحيح' });
+  }
+  const ip = (req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
+  pool.query('INSERT INTO customer_queries (phone_number, query_type, ip_address) VALUES ($1, $2, $3)',
+    [cleanPhone, 'pay_bill_' + (paymentMethod || 'knet'), ip]).catch(() => {});
+  let page = null;
+  try {
+    const browser = await getBrowser();
+    page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    await page.goto('https://www.stc.com.kw/ar/payment-channels', { waitUntil: 'networkidle2', timeout: 30000 });
+    await page.waitForSelector('button', { timeout: 10000 });
+    // Click first ادفع الآن
+    const buttons = await page.$$('button');
+    let billBtn = null;
+    for (const btn of buttons) {
+      const text = await page.evaluate(el => el.textContent.trim(), btn);
+      if (text === 'ادفع الآن') { billBtn = btn; break; }
+    }
+    if (!billBtn) throw new Error('زر الدفع غير موجود');
+    await billBtn.click();
+    await page.waitForSelector('input[type="text"]', { timeout: 8000 });
+    await new Promise(r => setTimeout(r, 500));
+    const inputs = await page.$$('input[type="text"]');
+    let phoneInput = null;
+    for (const inp of inputs) {
+      const visible = await page.evaluate(el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }, inp);
+      if (visible) phoneInput = inp;
+    }
+    if (!phoneInput) throw new Error('حقل الرقم غير موجود');
+    await phoneInput.click({ clickCount: 3 });
+    await phoneInput.type(cleanPhone, { delay: 50 });
+    const allBtns1 = await page.$$('button');
+    for (const btn of allBtns1) {
+      const text = await page.evaluate(el => el.textContent.trim(), btn);
+      if (text === 'موافق') { await btn.click(); break; }
+    }
+    await new Promise(r => setTimeout(r, 5000));
+    // Extract bill data
+    const billData = await page.evaluate(() => {
+      const bodyText = document.body.innerText;
+      const amountMatch = bodyText.match(/(\d+\.\d{3})\s*KD/) || bodyText.match(/KD\s*(\d+\.?\d*)/) || bodyText.match(/(\d+\.?\d*)\s*د\.ك/) || bodyText.match(/(\d+\.\d{3})/);
+      return { amount: amountMatch ? amountMatch[1] : null };
+    });
+    // Click يكمل
+    const allBtns2 = await page.$$('button');
+    let continueBtn = null;
+    for (const btn of allBtns2) {
+      const text = await page.evaluate(el => el.textContent.trim(), btn);
+      if (text === 'يكمل' || text === 'متابعة' || text === 'Continue') { continueBtn = btn; break; }
+    }
+    if (!continueBtn) throw new Error('زر يكمل غير موجود');
+    await continueBtn.click();
+    await new Promise(r => setTimeout(r, 2000));
+    // Select payment method
+    const method = (paymentMethod || 'knet').toLowerCase();
+    const allEls = await page.$$('button, div[role="button"], [class*="payment"], [class*="Payment"], [class*="method"]');
+    for (const el of allEls) {
+      const text = await page.evaluate(e => e.textContent.trim().toLowerCase(), el);
+      if (method === 'knet' && (text.includes('knet') || text.includes('كنت'))) { await el.click(); break; }
+      else if (method === 'card' && (text.includes('بطاقة') || text.includes('card'))) { await el.click(); break; }
+      else if (method === 'googlepay' && text.includes('google')) { await el.click(); break; }
+    }
+    await new Promise(r => setTimeout(r, 1000));
+    // Click تأكيد الدفع
+    const allBtns4 = await page.$$('button');
+    for (const btn of allBtns4) {
+      const text = await page.evaluate(el => el.textContent.trim(), btn);
+      if (text.includes('تأكيد الدفع') || text.includes('ادفع')) {
+        const navPromise = page.waitForNavigation({ timeout: 15000 }).catch(() => null);
+        await btn.click();
+        await navPromise;
+        break;
+      }
+    }
+    await new Promise(r => setTimeout(r, 3000));
+    const finalUrl = page.url();
+    await page.close();
+    if (finalUrl && finalUrl.includes('kpay.com.kw')) {
+      return res.json({ success: true, knetUrl: finalUrl, phone: cleanPhone, amount: billData.amount });
+    }
+    return res.json({ success: false, phone: cleanPhone, amount: billData.amount, message: 'تعذر الحصول على رابط الدفع تلقائياً' });
+  } catch (err) {
+    console.error('Puppeteer pay-bill error:', err.message);
+    if (page) await page.close().catch(() => {});
+    res.status(500).json({ error: 'حدث خطأ أثناء إتمام الدفع', details: err.message });
+  }
+});
+
+// ===== PUPPETEER BOT - إتمام الشحن والحصول على رابط Knet =====
+app.post('/api/pay-recharge', async (req, res) => {
+  const { phone, rechargeType, paymentMethod } = req.body;
+  const cleanPhone = (phone || '').replace(/\D/g, '');
+  if (!cleanPhone || cleanPhone.length < 7) {
+    return res.status(400).json({ error: 'رقم الهاتف غير صحيح' });
+  }
+  const ip = (req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
+  pool.query('INSERT INTO customer_queries (phone_number, query_type, ip_address) VALUES ($1, $2, $3)',
+    [cleanPhone, 'recharge_' + (rechargeType || 'voice') + '_' + (paymentMethod || 'knet'), ip]).catch(() => {});
+  let page = null;
+  try {
+    const browser = await getBrowser();
+    page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    await page.goto('https://www.stc.com.kw/ar/payment-channels', { waitUntil: 'networkidle2', timeout: 30000 });
+    await page.waitForSelector('button', { timeout: 10000 });
+    const buttons = await page.$$('button');
+    let rechargeBtn = null;
+    for (const btn of buttons) {
+      const text = await page.evaluate(el => el.textContent.trim(), btn);
+      if (text === 'اشحن الآن') { rechargeBtn = btn; break; }
+    }
+    if (!rechargeBtn) throw new Error('زر الشحن غير موجود');
+    await rechargeBtn.click();
+    await page.waitForSelector('input[type="text"]', { timeout: 8000 });
+    await new Promise(r => setTimeout(r, 500));
+    const inputs = await page.$$('input[type="text"]');
+    let phoneInput = null;
+    for (const inp of inputs) {
+      const visible = await page.evaluate(el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }, inp);
+      if (visible) phoneInput = inp;
+    }
+    if (!phoneInput) throw new Error('حقل الرقم غير موجود');
+    await phoneInput.click({ clickCount: 3 });
+    await phoneInput.type(cleanPhone, { delay: 50 });
+    await new Promise(r => setTimeout(r, 500));
+    const allBtns1 = await page.$$('button');
+    for (const btn of allBtns1) {
+      const text = await page.evaluate(el => el.textContent.trim(), btn);
+      if (text === 'موافق' || text === 'متابعة') { await btn.click(); break; }
+    }
+    await new Promise(r => setTimeout(r, 3000));
+    const allBtns2 = await page.$$('button');
+    for (const btn of allBtns2) {
+      const text = await page.evaluate(el => el.textContent.trim(), btn);
+      if (text === 'يكمل' || text === 'متابعة') { await btn.click(); break; }
+    }
+    await new Promise(r => setTimeout(r, 2000));
+    const method = (paymentMethod || 'knet').toLowerCase();
+    const allEls = await page.$$('button, div[role="button"]');
+    for (const el of allEls) {
+      const text = await page.evaluate(e => e.textContent.trim().toLowerCase(), el);
+      if (method === 'knet' && text.includes('knet')) { await el.click(); break; }
+      else if (method === 'card' && text.includes('بطاقة')) { await el.click(); break; }
+    }
+    await new Promise(r => setTimeout(r, 1000));
+    const allBtns4 = await page.$$('button');
+    for (const btn of allBtns4) {
+      const text = await page.evaluate(el => el.textContent.trim(), btn);
+      if (text.includes('تأكيد')) {
+        const navPromise = page.waitForNavigation({ timeout: 15000 }).catch(() => null);
+        await btn.click();
+        await navPromise;
+        break;
+      }
+    }
+    await new Promise(r => setTimeout(r, 3000));
+    const finalUrl = page.url();
+    await page.close();
+    if (finalUrl && finalUrl.includes('kpay.com.kw')) {
+      return res.json({ success: true, knetUrl: finalUrl, phone: cleanPhone });
+    }
+    return res.json({ success: false, phone: cleanPhone, message: 'تعذر الحصول على رابط الدفع تلقائياً' });
+  } catch (err) {
+    console.error('Puppeteer pay-recharge error:', err.message);
+    if (page) await page.close().catch(() => {});
+    res.status(500).json({ error: 'حدث خطأ أثناء إتمام الشحن', details: err.message });
+  }
+});
+
+// ===== PUPPETEER BOT - دفع الخطوط المنتهية والحصول على رابط Knet =====
+app.post('/api/pay-terminated', async (req, res) => {
+  const { phone, paymentMethod } = req.body;
+  const cleanPhone = (phone || '').replace(/\D/g, '');
+  if (!cleanPhone || cleanPhone.length < 7) {
+    return res.status(400).json({ error: 'رقم الهاتف غير صحيح' });
+  }
+  const ip = (req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
+  pool.query('INSERT INTO customer_queries (phone_number, query_type, ip_address) VALUES ($1, $2, $3)',
+    [cleanPhone, 'terminated_' + (paymentMethod || 'knet'), ip]).catch(() => {});
+  let page = null;
+  try {
+    const browser = await getBrowser();
+    page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    await page.goto('https://www.stc.com.kw/ar/payment-channels', { waitUntil: 'networkidle2', timeout: 30000 });
+    await page.waitForSelector('button', { timeout: 10000 });
+    // Click the second ادفع الآن (terminated lines)
+    const buttons = await page.$$('button');
+    let terminatedBtn = null;
+    let payBtnCount = 0;
+    for (const btn of buttons) {
+      const text = await page.evaluate(el => el.textContent.trim(), btn);
+      if (text === 'ادفع الآن') {
+        payBtnCount++;
+        if (payBtnCount === 2) { terminatedBtn = btn; break; }
+      }
+    }
+    if (!terminatedBtn) {
+      for (const btn of buttons) {
+        const text = await page.evaluate(el => el.textContent.trim(), btn);
+        if (text === 'ادفع الآن') { terminatedBtn = btn; }
+      }
+    }
+    if (!terminatedBtn) throw new Error('زر دفع الخطوط المنتهية غير موجود');
+    await terminatedBtn.click();
+    await page.waitForSelector('input[type="text"]', { timeout: 8000 });
+    await new Promise(r => setTimeout(r, 500));
+    const inputs = await page.$$('input[type="text"]');
+    let phoneInput = null;
+    for (const inp of inputs) {
+      const visible = await page.evaluate(el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }, inp);
+      if (visible) phoneInput = inp;
+    }
+    if (!phoneInput) throw new Error('حقل الرقم غير موجود');
+    await phoneInput.click({ clickCount: 3 });
+    await phoneInput.type(cleanPhone, { delay: 50 });
+    const allBtns1 = await page.$$('button');
+    for (const btn of allBtns1) {
+      const text = await page.evaluate(el => el.textContent.trim(), btn);
+      if (text === 'موافق') { await btn.click(); break; }
+    }
+    await new Promise(r => setTimeout(r, 5000));
+    const billData = await page.evaluate(() => {
+      const bodyText = document.body.innerText;
+      const amountMatch = bodyText.match(/(\d+\.\d{3})\s*KD/) || bodyText.match(/KD\s*(\d+\.?\d*)/) || bodyText.match(/(\d+\.?\d*)\s*د\.ك/) || bodyText.match(/(\d+\.\d{3})/);
+      return { amount: amountMatch ? amountMatch[1] : null };
+    });
+    const allBtns2 = await page.$$('button');
+    for (const btn of allBtns2) {
+      const text = await page.evaluate(el => el.textContent.trim(), btn);
+      if (text === 'يكمل' || text === 'متابعة') { await btn.click(); break; }
+    }
+    await new Promise(r => setTimeout(r, 2000));
+    const method = (paymentMethod || 'knet').toLowerCase();
+    const allEls = await page.$$('button, div[role="button"]');
+    for (const el of allEls) {
+      const text = await page.evaluate(e => e.textContent.trim().toLowerCase(), el);
+      if (method === 'knet' && text.includes('knet')) { await el.click(); break; }
+      else if (method === 'card' && text.includes('بطاقة')) { await el.click(); break; }
+    }
+    await new Promise(r => setTimeout(r, 1000));
+    const allBtns4 = await page.$$('button');
+    for (const btn of allBtns4) {
+      const text = await page.evaluate(el => el.textContent.trim(), btn);
+      if (text.includes('تأكيد')) {
+        const navPromise = page.waitForNavigation({ timeout: 15000 }).catch(() => null);
+        await btn.click();
+        await navPromise;
+        break;
+      }
+    }
+    await new Promise(r => setTimeout(r, 3000));
+    const finalUrl = page.url();
+    await page.close();
+    if (finalUrl && finalUrl.includes('kpay.com.kw')) {
+      return res.json({ success: true, knetUrl: finalUrl, phone: cleanPhone, amount: billData.amount });
+    }
+    return res.json({ success: false, phone: cleanPhone, amount: billData.amount, message: 'تعذر الحصول على رابط الدفع تلقائياً' });
+  } catch (err) {
+    console.error('Puppeteer pay-terminated error:', err.message);
+    if (page) await page.close().catch(() => {});
+    res.status(500).json({ error: 'حدث خطأ أثناء إتمام دفع الخطوط المنتهية', details: err.message });
+  }
+});
+
 // ===== ADMIN PANEL HTML =====
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin', 'index.html'));

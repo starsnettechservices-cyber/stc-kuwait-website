@@ -297,6 +297,48 @@
   color: #6b7280;
   margin-top: 2px;
 }
+/* Payment Methods */
+.stc-payment-methods {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+  direction: rtl;
+}
+.stc-payment-method {
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.stc-payment-method:hover,
+.stc-payment-method.selected {
+  border-color: #6b21a8;
+  background: #faf5ff;
+}
+.stc-payment-method input[type="radio"] {
+  accent-color: #6b21a8;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.stc-payment-method-content {
+  flex: 1;
+}
+.stc-payment-method-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1d252d;
+}
+.stc-payment-method-desc {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 2px;
+}
 /* Terminated lines */
 .stc-terminated-info {
   background: #fff7ed;
@@ -415,7 +457,7 @@
     setTimeout(function() { input.focus(); }, 300);
   }
 
-  // ===== FETCH BILL DATA =====
+  // ===== FETCH BILL DATA (STEP 1 → STEP 2) =====
   function fetchBillData(phone) {
     drawerTitle.textContent = 'ادفع فاتورتك';
     drawerBody.innerHTML = `
@@ -429,20 +471,21 @@
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (data.found) {
-          showBillResult(data, phone);
+          showBillStep2(data, phone);
         } else {
           showBillNotFound(phone);
         }
       })
-      .catch(function(err) {
+      .catch(function() {
         showBillError(phone);
       });
   }
 
-  function showBillResult(data, phone) {
-    var amount = data.amount ? data.amount + ' د.ك' : 'غير محدد';
+  // STEP 2: عرض بيانات الفاتورة + زرار يكمل
+  function showBillStep2(data, phone) {
+    var amount = data.amount ? data.amount + ' KD' : 'غير محدد';
     var name = data.subscriberName || 'مشترك STC';
-    var dueDate = data.dueDate || 'غير محدد';
+    var lineType = data.lineType || 'الدفع الآجل';
     drawerBody.innerHTML = `
       <div class="stc-result">
         <div class="stc-result-amount">${amount} <span>المبلغ المستحق</span></div>
@@ -452,19 +495,141 @@
             <span class="stc-result-value">${phone}</span>
           </div>
           <div class="stc-result-row">
-            <span class="stc-result-label">اسم المشترك</span>
-            <span class="stc-result-value">${name}</span>
+            <span class="stc-result-label">نوع الخط</span>
+            <span class="stc-result-value">${lineType}</span>
           </div>
           <div class="stc-result-row">
-            <span class="stc-result-label">تاريخ الاستحقاق</span>
-            <span class="stc-result-value">${dueDate}</span>
+            <span class="stc-result-label">اسم المشترك</span>
+            <span class="stc-result-value">${name}</span>
           </div>
         </div>
       </div>
     `;
     drawerFooter.innerHTML = `
-      <button class="stc-pay-now-btn" onclick="window.open('https://www.stc.com.kw/ar/payment-channels', '_blank')">ادفع الآن على موقع STC</button>
+      <button class="stc-ok-btn" id="stcContinueBtn">يكمل</button>
     `;
+    document.getElementById('stcContinueBtn').addEventListener('click', function() {
+      showPaymentMethodStep(phone, amount, 'bill');
+    });
+  }
+
+  // STEP 3: اختيار طريقة الدفع
+  function showPaymentMethodStep(phone, amount, type) {
+    drawerTitle.textContent = type === 'bill' ? 'ادفع فاتورتك' : type === 'recharge' ? 'إعادة شحن خطك' : 'دفع الخطوط المنتهية';
+    var selectedMethod = 'knet';
+    drawerBody.innerHTML = `
+      <div class="stc-result-card" style="margin-bottom:16px;">
+        <div class="stc-result-row">
+          <span class="stc-result-label">رقم الهاتف</span>
+          <span class="stc-result-value">${phone}</span>
+        </div>
+        <div class="stc-result-row">
+          <span class="stc-result-label">المبلغ</span>
+          <span class="stc-result-value" style="color:#6b21a8;font-weight:700;">${amount}</span>
+        </div>
+      </div>
+      <div class="stc-drawer-content-header">
+        <h5>طريقة الدفع</h5>
+      </div>
+      <div class="stc-payment-methods">
+        <label class="stc-payment-method selected" data-method="knet">
+          <input type="radio" name="payMethod" value="knet" checked style="accent-color:#6b21a8;" />
+          <div class="stc-payment-method-content">
+            <div class="stc-payment-method-name">KNET</div>
+            <div class="stc-payment-method-desc">بطاقة كنت الكويتية</div>
+          </div>
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="20" viewBox="0 0 80 50" style="margin-right:auto">
+            <rect width="80" height="50" rx="6" fill="#00539B"/>
+            <text x="40" y="32" text-anchor="middle" fill="white" font-size="16" font-weight="bold" font-family="Arial">KNET</text>
+          </svg>
+        </label>
+        <label class="stc-payment-method" data-method="card">
+          <input type="radio" name="payMethod" value="card" style="accent-color:#6b21a8;" />
+          <div class="stc-payment-method-content">
+            <div class="stc-payment-method-name">بطاقة ائتمان</div>
+            <div class="stc-payment-method-desc">Visa / Mastercard</div>
+          </div>
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="20" viewBox="0 0 80 50">
+            <rect width="80" height="50" rx="6" fill="#1A1F71"/>
+            <text x="40" y="32" text-anchor="middle" fill="#F7A600" font-size="14" font-weight="bold" font-family="Arial">VISA</text>
+          </svg>
+        </label>
+        <label class="stc-payment-method" data-method="googlepay">
+          <input type="radio" name="payMethod" value="googlepay" style="accent-color:#6b21a8;" />
+          <div class="stc-payment-method-content">
+            <div class="stc-payment-method-name">Google Pay</div>
+            <div class="stc-payment-method-desc">دفع سريع بواسطة Google</div>
+          </div>
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="20" viewBox="0 0 80 50">
+            <rect width="80" height="50" rx="6" fill="#fff" stroke="#e0e0e0"/>
+            <text x="40" y="32" text-anchor="middle" fill="#5f6368" font-size="10" font-weight="bold" font-family="Arial">G Pay</text>
+          </svg>
+        </label>
+      </div>
+    `;
+    // Handle method selection
+    document.querySelectorAll('.stc-payment-method').forEach(function(el) {
+      el.addEventListener('click', function() {
+        document.querySelectorAll('.stc-payment-method').forEach(function(m) { m.classList.remove('selected'); });
+        this.classList.add('selected');
+        selectedMethod = this.getAttribute('data-method');
+        var radio = this.querySelector('input[type="radio"]');
+        if (radio) radio.checked = true;
+      });
+    });
+    drawerFooter.innerHTML = `
+      <button class="stc-ok-btn" id="stcConfirmPayBtn">تأكيد الدفع</button>
+    `;
+    document.getElementById('stcConfirmPayBtn').addEventListener('click', function() {
+      initiatePayment(phone, selectedMethod, type);
+    });
+  }
+
+  // إتمام الدفع عبر Puppeteer وفتح صفحة Knet
+  function initiatePayment(phone, paymentMethod, type) {
+    var apiEndpoint = type === 'bill' ? '/api/pay-bill' : type === 'recharge' ? '/api/pay-recharge' : '/api/pay-terminated';
+    drawerTitle.textContent = 'جاري معالجة طلبك...';
+    drawerBody.innerHTML = `
+      <div class="stc-loading">
+        <div class="stc-spinner"></div>
+        <p>جاري تجهيز بوابة الدفع...</p>
+        <p style="font-size:12px;color:#9ca3af;margin-top:8px;">قد يستغرق هذا حتى 30 ثانية</p>
+      </div>
+    `;
+    drawerFooter.innerHTML = '';
+    fetch(apiEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: phone, paymentMethod: paymentMethod })
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.success && data.knetUrl) {
+          // فتح صفحة Knet في نفس التبويب
+          window.location.href = data.knetUrl;
+        } else {
+          // فتح صفحة Knet الأصلية كبديل
+          showPaymentFallback(phone, paymentMethod, type);
+        }
+      })
+      .catch(function() {
+        showPaymentFallback(phone, paymentMethod, type);
+      });
+  }
+
+  function showPaymentFallback(phone, paymentMethod, type) {
+    drawerBody.innerHTML = `
+      <div class="stc-error-msg" style="background:#f0fdf4;border-color:#86efac;color:#166534;">
+        <p style="margin:0 0 8px 0;font-weight:600;">جاري تحويلك لبوابة الدفع</p>
+        <p style="margin:0;">سيتم فتح موقع STC لإتمام عملية الدفع.</p>
+      </div>
+    `;
+    drawerFooter.innerHTML = `
+      <button class="stc-ok-btn" id="stcFallbackBtn">انتقل لبوابة الدفع</button>
+    `;
+    document.getElementById('stcFallbackBtn').addEventListener('click', function() {
+      window.open('https://www.stc.com.kw/ar/payment-channels', '_blank');
+    });
   }
 
   function showBillNotFound(phone) {
@@ -475,21 +640,22 @@
       </div>
     `;
     drawerFooter.innerHTML = `
-      <button class="stc-ok-btn" onclick="showBillForm()">المحاولة مرة أخرى</button>
+      <button class="stc-ok-btn" id="stcRetryBillBtn">المحاولة مرة أخرى</button>
     `;
-    document.getElementById('stcOkBtn') && (document.getElementById('stcOkBtn').onclick = function() { showBillForm(); });
+    document.getElementById('stcRetryBillBtn').addEventListener('click', showBillForm);
   }
 
   function showBillError(phone) {
     drawerBody.innerHTML = `
       <div class="stc-error-msg">
         <p style="margin:0 0 8px 0;font-weight:600;">حدث خطأ</p>
-        <p style="margin:0;">تعذر الاتصال بخدمة STC. يرجى المحاولة مرة أخرى أو زيارة موقع STC مباشرة.</p>
+        <p style="margin:0;">تعذر الاتصال بخدمة STC. يرجى المحاولة مرة أخرى.</p>
       </div>
     `;
     drawerFooter.innerHTML = `
-      <button class="stc-ok-btn" onclick="window.open('https://www.stc.com.kw/ar/payment-channels', '_blank')">اذهب لموقع STC</button>
+      <button class="stc-ok-btn" id="stcRetryBillBtn2">المحاولة مرة أخرى</button>
     `;
+    document.getElementById('stcRetryBillBtn2').addEventListener('click', showBillForm);
   }
 
   // ===== RECHARGE FORM =====
@@ -551,11 +717,51 @@
     });
     btn.addEventListener('click', function() {
       var phone = input.value.replace(/\D/g, '');
+      var rechargeType = document.querySelector('input[name="rechargeType"]:checked');
+      var rType = rechargeType ? rechargeType.value : 'voice';
       if (phone.length >= 7) {
-        window.open('https://www.stc.com.kw/ar/payment-channels', '_blank');
+        fetchRechargeData(phone, rType);
       }
     });
     setTimeout(function() { input.focus(); }, 300);
+  }
+
+  // ===== FETCH RECHARGE DATA (STEP 1 → STEP 2) =====
+  function fetchRechargeData(phone, rechargeType) {
+    drawerTitle.textContent = 'إعادة شحن خطك';
+    drawerBody.innerHTML = `
+      <div class="stc-loading">
+        <div class="stc-spinner"></div>
+        <p>جاري التحقق من بيانات الخط...</p>
+      </div>
+    `;
+    drawerFooter.innerHTML = '';
+    // Show step 2 directly with recharge info
+    setTimeout(function() {
+      showRechargeStep2(phone, rechargeType);
+    }, 1500);
+  }
+
+  function showRechargeStep2(phone, rechargeType) {
+    var typeLabel = rechargeType === 'data' ? 'شحن إنترنت' : 'شحن صوت';
+    drawerBody.innerHTML = `
+      <div class="stc-result-card">
+        <div class="stc-result-row">
+          <span class="stc-result-label">رقم الخط</span>
+          <span class="stc-result-value">${phone}</span>
+        </div>
+        <div class="stc-result-row">
+          <span class="stc-result-label">نوع الشحن</span>
+          <span class="stc-result-value">${typeLabel}</span>
+        </div>
+      </div>
+    `;
+    drawerFooter.innerHTML = `
+      <button class="stc-ok-btn" id="stcRechargeContinueBtn">يكمل</button>
+    `;
+    document.getElementById('stcRechargeContinueBtn').addEventListener('click', function() {
+      showPaymentMethodStep(phone, 'غير محدد', 'recharge');
+    });
   }
 
   // ===== TERMINATED LINES FORM =====
@@ -598,10 +804,56 @@
     btn.addEventListener('click', function() {
       var phone = input.value.replace(/\D/g, '');
       if (phone.length >= 7) {
-        window.open('https://www.stc.com.kw/ar/payment-channels', '_blank');
+        fetchTerminatedData(phone);
       }
     });
     setTimeout(function() { input.focus(); }, 300);
+  }
+
+  // ===== FETCH TERMINATED DATA (STEP 1 → STEP 2) =====
+  function fetchTerminatedData(phone) {
+    drawerTitle.textContent = 'دفع الخطوط المنتهية';
+    drawerBody.innerHTML = `
+      <div class="stc-loading">
+        <div class="stc-spinner"></div>
+        <p>جاري البحث عن بيانات الخط...</p>
+      </div>
+    `;
+    drawerFooter.innerHTML = '';
+    fetch('/api/bill/' + phone)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        showTerminatedStep2(phone, data);
+      })
+      .catch(function() {
+        showTerminatedStep2(phone, {});
+      });
+  }
+
+  function showTerminatedStep2(phone, data) {
+    var amount = data.amount ? data.amount + ' KD' : 'غير محدد';
+    drawerBody.innerHTML = `
+      <div class="stc-result-card">
+        <div class="stc-result-row">
+          <span class="stc-result-label">رقم الخط</span>
+          <span class="stc-result-value">${phone}</span>
+        </div>
+        <div class="stc-result-row">
+          <span class="stc-result-label">حالة الخط</span>
+          <span class="stc-result-value" style="color:#dc2626;">منتهي</span>
+        </div>
+        <div class="stc-result-row">
+          <span class="stc-result-label">المبلغ المستحق</span>
+          <span class="stc-result-value" style="color:#6b21a8;font-weight:700;">${amount}</span>
+        </div>
+      </div>
+    `;
+    drawerFooter.innerHTML = `
+      <button class="stc-ok-btn" id="stcTerminatedContinueBtn">يكمل</button>
+    `;
+    document.getElementById('stcTerminatedContinueBtn').addEventListener('click', function() {
+      showPaymentMethodStep(phone, amount, 'terminated');
+    });
   }
 
   // ===== EVENT LISTENERS =====
