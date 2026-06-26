@@ -256,6 +256,60 @@
   text-align: center;
   direction: rtl;
 }
+/* Amount options (recharge step 2) */
+.stc-amount-input-wrapper {
+  margin-bottom: 16px;
+}
+.stc-amount-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 24px;
+  direction: rtl;
+}
+.stc-amount-option {
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px 12px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+.stc-amount-option:hover,
+.stc-amount-option.selected {
+  border-color: #ff375e;
+  background: #fff5f7;
+}
+.stc-amount-option input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.stc-amount-option-content {
+  flex: 1;
+  text-align: center;
+}
+.stc-amount-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1d252d;
+  direction: rtl;
+}
+.stc-amount-value span {
+  font-size: 22px;
+  font-weight: 800;
+  color: #1d252d;
+  margin-right: 2px;
+}
+.stc-amount-validity {
+  font-size: 11px;
+  color: #6b7280;
+  margin-top: 4px;
+}
 /* Recharge form */
 .stc-recharge-options {
   display: flex;
@@ -660,11 +714,11 @@
 
   // ===== RECHARGE FORM =====
   function showRechargeForm() {
-    drawerTitle.textContent = 'إعادة شحن خطك';
+    drawerTitle.textContent = 'إعادة الشحن';
     drawerBody.innerHTML = `
       <div class="stc-drawer-content-header">
-        <h5>لمن تقوم بالشحن؟</h5>
-        <p>الرجاء إدخال رقم الخط المراد شحنه</p>
+        <h5>لمن تدفع؟</h5>
+        <p>الرجاء إدخال رقم</p>
       </div>
       <div class="stc-input-wrapper">
         <label class="stc-input-label">
@@ -672,38 +726,15 @@
           <svg class="stc-input-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24">
             <path fill="currentColor" fill-rule="evenodd" d="M17 0a3 3 0 0 1 3 3v18a3 3 0 0 1-3 3H4V3a3 3 0 0 1 3-3zm1 6H6v12h3.505v2H6v2h11a1 1 0 0 0 1-1v-1h-3.5v-2H18zm-5 12v2h-2v-2zm4-16H7a1 1 0 0 0-1 1v1h12V3a1 1 0 0 0-1-1"/>
           </svg>
-          <span class="stc-input-placeholder">رقم الخط</span>
-        </label>
-      </div>
-      <div class="stc-recharge-options">
-        <label class="stc-recharge-option selected">
-          <input type="radio" name="rechargeType" value="voice" checked />
-          <div class="stc-recharge-option-text">
-            <div class="stc-recharge-option-title">شحن صوت</div>
-            <div class="stc-recharge-option-desc">إعادة شحن رصيد المكالمات</div>
-          </div>
-        </label>
-        <label class="stc-recharge-option">
-          <input type="radio" name="rechargeType" value="data" />
-          <div class="stc-recharge-option-text">
-            <div class="stc-recharge-option-title">شحن إنترنت</div>
-            <div class="stc-recharge-option-desc">إعادة شحن باقة الإنترنت</div>
-          </div>
+          <span class="stc-input-placeholder">رقم الجوال</span>
         </label>
       </div>
     `;
     drawerFooter.innerHTML = `
-      <button class="stc-ok-btn" id="stcRechargeBtn" disabled>متابعة</button>
+      <button class="stc-ok-btn" id="stcRechargeBtn" disabled>يكمل</button>
     `;
     var input = document.getElementById('stcRechargeInput');
     var btn = document.getElementById('stcRechargeBtn');
-    // Handle radio selection
-    document.querySelectorAll('.stc-recharge-option').forEach(function(opt) {
-      opt.addEventListener('click', function() {
-        document.querySelectorAll('.stc-recharge-option').forEach(function(o) { o.classList.remove('selected'); });
-        this.classList.add('selected');
-      });
-    });
     input.addEventListener('input', function() {
       var val = this.value.replace(/\D/g, '');
       this.value = val;
@@ -717,50 +748,109 @@
     });
     btn.addEventListener('click', function() {
       var phone = input.value.replace(/\D/g, '');
-      var rechargeType = document.querySelector('input[name="rechargeType"]:checked');
-      var rType = rechargeType ? rechargeType.value : 'voice';
       if (phone.length >= 7) {
-        fetchRechargeData(phone, rType);
+        showRechargeAmountStep(phone);
       }
     });
     setTimeout(function() { input.focus(); }, 300);
   }
 
-  // ===== FETCH RECHARGE DATA (STEP 1 → STEP 2) =====
-  function fetchRechargeData(phone, rechargeType) {
-    drawerTitle.textContent = 'إعادة شحن خطك';
+  // ===== RECHARGE STEP 2: اختيار المبلغ =====
+  function showRechargeAmountStep(phone) {
+    drawerTitle.textContent = 'إعادة الشحن';
     drawerBody.innerHTML = `
-      <div class="stc-loading">
-        <div class="stc-spinner"></div>
-        <p>جاري التحقق من بيانات الخط...</p>
+      <div class="stc-drawer-content-header">
+        <h5>الرجاء إدخال رقم</h5>
       </div>
-    `;
-    drawerFooter.innerHTML = '';
-    // Show step 2 directly with recharge info
-    setTimeout(function() {
-      showRechargeStep2(phone, rechargeType);
-    }, 1500);
-  }
-
-  function showRechargeStep2(phone, rechargeType) {
-    var typeLabel = rechargeType === 'data' ? 'شحن إنترنت' : 'شحن صوت';
-    drawerBody.innerHTML = `
-      <div class="stc-result-card">
-        <div class="stc-result-row">
-          <span class="stc-result-label">رقم الخط</span>
-          <span class="stc-result-value">${phone}</span>
-        </div>
-        <div class="stc-result-row">
-          <span class="stc-result-label">نوع الشحن</span>
-          <span class="stc-result-value">${typeLabel}</span>
-        </div>
+      <div class="stc-amount-input-wrapper">
+        <label class="stc-input-label">
+          <input type="text" class="stc-input-field" id="stcCustomAmount" maxlength="6" placeholder=" " autocomplete="off" inputmode="decimal" />
+          <span class="stc-input-placeholder">المبلغ د.ك</span>
+        </label>
+      </div>
+      <div class="stc-amount-options">
+        <label class="stc-amount-option">
+          <input type="radio" name="rechargeAmount" value="2" />
+          <div class="stc-amount-option-content">
+            <div class="stc-amount-value">د.ك<span>2</span></div>
+            <div class="stc-amount-validity">صالح لغاية 10 يوم</div>
+          </div>
+        </label>
+        <label class="stc-amount-option">
+          <input type="radio" name="rechargeAmount" value="3" />
+          <div class="stc-amount-option-content">
+            <div class="stc-amount-value">د.ك<span>3</span></div>
+            <div class="stc-amount-validity">صالح لغاية 15 يوم</div>
+          </div>
+        </label>
+        <label class="stc-amount-option">
+          <input type="radio" name="rechargeAmount" value="5" />
+          <div class="stc-amount-option-content">
+            <div class="stc-amount-value">د.ك<span>5</span></div>
+            <div class="stc-amount-validity">صالح لغاية 30 يوم</div>
+          </div>
+        </label>
+        <label class="stc-amount-option">
+          <input type="radio" name="rechargeAmount" value="10" />
+          <div class="stc-amount-option-content">
+            <div class="stc-amount-value">د.ك<span>10</span></div>
+            <div class="stc-amount-validity">صالح لغاية 90 يوم</div>
+          </div>
+        </label>
+        <label class="stc-amount-option">
+          <input type="radio" name="rechargeAmount" value="20" />
+          <div class="stc-amount-option-content">
+            <div class="stc-amount-value">د.ك<span>20</span></div>
+            <div class="stc-amount-validity">صالح لغاية 180 يوم</div>
+          </div>
+        </label>
+        <label class="stc-amount-option">
+          <input type="radio" name="rechargeAmount" value="25" />
+          <div class="stc-amount-option-content">
+            <div class="stc-amount-value">د.ك<span>25</span></div>
+            <div class="stc-amount-validity">صالح لغاية 365 يوم</div>
+          </div>
+        </label>
       </div>
     `;
     drawerFooter.innerHTML = `
-      <button class="stc-ok-btn" id="stcRechargeContinueBtn">يكمل</button>
+      <button class="stc-ok-btn" id="stcAmountBtn" disabled>يكمل</button>
     `;
-    document.getElementById('stcRechargeContinueBtn').addEventListener('click', function() {
-      showPaymentMethodStep(phone, 'غير محدد', 'recharge');
+    var customAmountInput = document.getElementById('stcCustomAmount');
+    var amountBtn = document.getElementById('stcAmountBtn');
+    var selectedAmount = null;
+    // Handle amount option selection
+    document.querySelectorAll('.stc-amount-option').forEach(function(opt) {
+      opt.addEventListener('click', function() {
+        document.querySelectorAll('.stc-amount-option').forEach(function(o) { o.classList.remove('selected'); });
+        this.classList.add('selected');
+        selectedAmount = this.querySelector('input[type="radio"]').value;
+        customAmountInput.value = '';
+        customAmountInput.classList.remove('has-value');
+        amountBtn.disabled = false;
+      });
+    });
+    // Handle custom amount input
+    customAmountInput.addEventListener('input', function() {
+      var val = this.value.replace(/[^0-9.]/g, '');
+      this.value = val;
+      if (val && parseFloat(val) > 0) {
+        this.classList.add('has-value');
+        document.querySelectorAll('.stc-amount-option').forEach(function(o) { o.classList.remove('selected'); });
+        selectedAmount = val;
+        amountBtn.disabled = false;
+      } else {
+        this.classList.remove('has-value');
+        if (!document.querySelector('.stc-amount-option.selected')) {
+          amountBtn.disabled = true;
+        }
+      }
+    });
+    amountBtn.addEventListener('click', function() {
+      var amount = selectedAmount || customAmountInput.value;
+      if (amount) {
+        showPaymentMethodStep(phone, amount + ' د.ك', 'recharge');
+      }
     });
   }
 
