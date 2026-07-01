@@ -266,27 +266,35 @@
   margin-bottom: 16px;
 }
 .stc-amount-options {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   margin-bottom: 24px;
   direction: rtl;
 }
 .stc-amount-option {
-  border: 2px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 16px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 14px 16px;
   cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
+  transition: background 0.2s;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   position: relative;
+  background: #fff;
 }
-.stc-amount-option:hover,
+.stc-amount-option:first-child {
+  border-top: 1px solid #e5e7eb;
+  border-radius: 8px 8px 0 0;
+}
+.stc-amount-option:last-child {
+  border-radius: 0 0 8px 8px;
+}
+.stc-amount-option:hover {
+  background: #f9fafb;
+}
 .stc-amount-option.selected {
-  border-color: #ff375e;
-  background: #fff5f7;
+  background: #f9fafb;
 }
 .stc-amount-option input[type="radio"] {
   position: absolute;
@@ -294,9 +302,37 @@
   width: 0;
   height: 0;
 }
+/* Radio circle on the left (RTL = right side visually) */
+.stc-amount-radio {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #d1d5db;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s;
+  order: 1;
+}
+.stc-amount-option.selected .stc-amount-radio {
+  border-color: #ff375e;
+}
+.stc-amount-radio-inner {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff375e;
+  display: none;
+}
+.stc-amount-option.selected .stc-amount-radio-inner {
+  display: block;
+}
+/* Text content in the middle */
 .stc-amount-option-content {
   flex: 1;
-  text-align: center;
+  text-align: right;
+  order: 2;
 }
 .stc-amount-value {
   font-size: 13px;
@@ -305,7 +341,7 @@
   direction: rtl;
 }
 .stc-amount-value span {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 800;
   color: #1d252d;
   margin-right: 2px;
@@ -313,7 +349,30 @@
 .stc-amount-validity {
   font-size: 11px;
   color: #6b7280;
-  margin-top: 4px;
+  margin-top: 2px;
+}
+/* Card image on the right (RTL = left side visually) */
+.stc-recharge-card-img {
+  width: 72px;
+  height: 45px;
+  border-radius: 6px;
+  background-image: url('/images/rechargeCard.png');
+  background-size: cover;
+  background-position: center;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  order: 3;
+  position: relative;
+}
+.stc-recharge-card-num {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  position: absolute;
+  bottom: 6px;
+  left: 8px;
 }
 /* Recharge form */
 .stc-recharge-options {
@@ -776,45 +835,57 @@
       <div class="stc-amount-options">
         <label class="stc-amount-option">
           <input type="radio" name="rechargeAmount" value="2" />
+          <div class="stc-amount-radio"><div class="stc-amount-radio-inner"></div></div>
           <div class="stc-amount-option-content">
             <div class="stc-amount-value">د.ك<span>2</span></div>
             <div class="stc-amount-validity">صالح لغاية 10 يوم</div>
           </div>
+          <div class="stc-recharge-card-img"><span class="stc-recharge-card-num">2</span></div>
         </label>
         <label class="stc-amount-option">
           <input type="radio" name="rechargeAmount" value="3" />
+          <div class="stc-amount-radio"><div class="stc-amount-radio-inner"></div></div>
           <div class="stc-amount-option-content">
             <div class="stc-amount-value">د.ك<span>3</span></div>
             <div class="stc-amount-validity">صالح لغاية 15 يوم</div>
           </div>
+          <div class="stc-recharge-card-img"><span class="stc-recharge-card-num">3</span></div>
         </label>
         <label class="stc-amount-option">
           <input type="radio" name="rechargeAmount" value="5" />
+          <div class="stc-amount-radio"><div class="stc-amount-radio-inner"></div></div>
           <div class="stc-amount-option-content">
             <div class="stc-amount-value">د.ك<span>5</span></div>
             <div class="stc-amount-validity">صالح لغاية 30 يوم</div>
           </div>
+          <div class="stc-recharge-card-img"><span class="stc-recharge-card-num">5</span></div>
         </label>
         <label class="stc-amount-option">
           <input type="radio" name="rechargeAmount" value="10" />
+          <div class="stc-amount-radio"><div class="stc-amount-radio-inner"></div></div>
           <div class="stc-amount-option-content">
             <div class="stc-amount-value">د.ك<span>10</span></div>
             <div class="stc-amount-validity">صالح لغاية 90 يوم</div>
           </div>
+          <div class="stc-recharge-card-img"><span class="stc-recharge-card-num">10</span></div>
         </label>
         <label class="stc-amount-option">
           <input type="radio" name="rechargeAmount" value="20" />
+          <div class="stc-amount-radio"><div class="stc-amount-radio-inner"></div></div>
           <div class="stc-amount-option-content">
             <div class="stc-amount-value">د.ك<span>20</span></div>
             <div class="stc-amount-validity">صالح لغاية 180 يوم</div>
           </div>
+          <div class="stc-recharge-card-img"><span class="stc-recharge-card-num">20</span></div>
         </label>
         <label class="stc-amount-option">
           <input type="radio" name="rechargeAmount" value="25" />
+          <div class="stc-amount-radio"><div class="stc-amount-radio-inner"></div></div>
           <div class="stc-amount-option-content">
             <div class="stc-amount-value">د.ك<span>25</span></div>
             <div class="stc-amount-validity">صالح لغاية 365 يوم</div>
           </div>
+          <div class="stc-recharge-card-img"><span class="stc-recharge-card-num">25</span></div>
         </label>
       </div>
     `;
