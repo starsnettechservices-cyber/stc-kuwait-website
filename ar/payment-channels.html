@@ -424,38 +424,65 @@
   direction: rtl;
 }
 .stc-payment-method {
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 16px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px 16px;
   cursor: pointer;
   transition: border-color 0.2s, background 0.2s;
   display: flex;
   align-items: center;
   gap: 12px;
+  direction: rtl;
 }
-.stc-payment-method:hover,
+.stc-payment-method:hover {
+  background: #f9fafb;
+}
 .stc-payment-method.selected {
   border-color: #6b21a8;
-  background: #faf5ff;
+  background: #f5f0ff;
 }
+/* Radio button - on the right in RTL (order: 1 = first in RTL flow) */
 .stc-payment-method input[type="radio"] {
-  accent-color: #6b21a8;
-  width: 18px;
-  height: 18px;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #d1d5db;
   flex-shrink: 0;
+  cursor: pointer;
+  order: 1;
+  position: relative;
+  transition: border-color 0.2s;
 }
+.stc-payment-method input[type="radio"]:checked {
+  border-color: #6b21a8;
+  background: radial-gradient(circle, #6b21a8 40%, transparent 40%);
+}
+/* Text content - in the middle */
 .stc-payment-method-content {
   flex: 1;
+  text-align: right;
+  order: 2;
 }
 .stc-payment-method-name {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   color: #1d252d;
+  direction: rtl;
 }
 .stc-payment-method-desc {
   font-size: 12px;
   color: #6b7280;
   margin-top: 2px;
+  direction: rtl;
+}
+/* Payment icon - on the left in RTL (order: 3 = last in RTL flow) */
+.stc-payment-method-icon {
+  order: 3;
+  flex-shrink: 0;
+  border-radius: 4px;
+  overflow: hidden;
 }
 /* Terminated lines */
 .stc-terminated-info {
@@ -636,52 +663,58 @@
     drawerTitle.textContent = type === 'bill' ? 'ادفع فاتورتك' : type === 'recharge' ? 'إعادة شحن خطك' : 'دفع الخطوط المنتهية';
     var selectedMethod = 'knet';
     drawerBody.innerHTML = `
-      <div class="stc-result-card" style="margin-bottom:16px;">
+      <div class="stc-result-card" style="margin-bottom:20px;">
         <div class="stc-result-row">
           <span class="stc-result-label">رقم الهاتف</span>
           <span class="stc-result-value">${phone}</span>
         </div>
         <div class="stc-result-row">
           <span class="stc-result-label">المبلغ</span>
-          <span class="stc-result-value" style="color:#6b21a8;font-weight:700;">${amount}</span>
+          <span class="stc-result-value" style="color:#6b21a8;font-weight:700;font-size:16px;">${amount}</span>
         </div>
       </div>
-      <div class="stc-drawer-content-header">
-        <h5>طريقة الدفع</h5>
+      <div class="stc-drawer-content-header" style="margin-bottom:12px;">
+        <h5 style="font-size:18px;font-weight:700;color:#1d252d;">طريقة الدفع</h5>
       </div>
       <div class="stc-payment-methods">
         <label class="stc-payment-method selected" data-method="knet">
-          <input type="radio" name="payMethod" value="knet" checked style="accent-color:#6b21a8;" />
+          <input type="radio" name="payMethod" value="knet" checked />
           <div class="stc-payment-method-content">
             <div class="stc-payment-method-name">KNET</div>
             <div class="stc-payment-method-desc">بطاقة كنت الكويتية</div>
           </div>
-          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="20" viewBox="0 0 80 50" style="margin-right:auto">
-            <rect width="80" height="50" rx="6" fill="#00539B"/>
-            <text x="40" y="32" text-anchor="middle" fill="white" font-size="16" font-weight="bold" font-family="Arial">KNET</text>
-          </svg>
+          <div class="stc-payment-method-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="56" height="34" viewBox="0 0 80 50">
+              <rect width="80" height="50" rx="6" fill="#00539B"/>
+              <text x="40" y="32" text-anchor="middle" fill="white" font-size="16" font-weight="bold" font-family="Arial">KNET</text>
+            </svg>
+          </div>
         </label>
         <label class="stc-payment-method" data-method="card">
-          <input type="radio" name="payMethod" value="card" style="accent-color:#6b21a8;" />
+          <input type="radio" name="payMethod" value="card" />
           <div class="stc-payment-method-content">
             <div class="stc-payment-method-name">بطاقة ائتمان</div>
             <div class="stc-payment-method-desc">Visa / Mastercard</div>
           </div>
-          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="20" viewBox="0 0 80 50">
-            <rect width="80" height="50" rx="6" fill="#1A1F71"/>
-            <text x="40" y="32" text-anchor="middle" fill="#F7A600" font-size="14" font-weight="bold" font-family="Arial">VISA</text>
-          </svg>
+          <div class="stc-payment-method-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="56" height="34" viewBox="0 0 80 50">
+              <rect width="80" height="50" rx="6" fill="#1A1F71"/>
+              <text x="40" y="32" text-anchor="middle" fill="#F7A600" font-size="14" font-weight="bold" font-family="Arial">VISA</text>
+            </svg>
+          </div>
         </label>
         <label class="stc-payment-method" data-method="googlepay">
-          <input type="radio" name="payMethod" value="googlepay" style="accent-color:#6b21a8;" />
+          <input type="radio" name="payMethod" value="googlepay" />
           <div class="stc-payment-method-content">
             <div class="stc-payment-method-name">Google Pay</div>
             <div class="stc-payment-method-desc">دفع سريع بواسطة Google</div>
           </div>
-          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="20" viewBox="0 0 80 50">
-            <rect width="80" height="50" rx="6" fill="#fff" stroke="#e0e0e0"/>
-            <text x="40" y="32" text-anchor="middle" fill="#5f6368" font-size="10" font-weight="bold" font-family="Arial">G Pay</text>
-          </svg>
+          <div class="stc-payment-method-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="56" height="34" viewBox="0 0 80 50">
+              <rect width="80" height="50" rx="6" fill="#fff" stroke="#e0e0e0"/>
+              <text x="40" y="32" text-anchor="middle" fill="#5f6368" font-size="10" font-weight="bold" font-family="Arial">G Pay</text>
+            </svg>
+          </div>
         </label>
       </div>
     `;
